@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Strike - 霓虹突擊</title>
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00ff;
+            --neon-green: #39ff14;
+            --bg-color: #0a0a12;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-shadow: none;
+            border: none;
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+            cursor: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            text-shadow: 0 0 10px var(--neon-blue);
+        }
+
+        #score {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--neon-blue);
+        }
+
+        #health-container {
+            width: 200px;
+            height: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--neon-blue);
+            margin-top: 10px;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        #health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-blue), #00aaff);
+            transition: width 0.3s ease;
+            box-shadow: 0 0 15px var(--neon-blue);
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: transparent;
+            color: var(--neon-pink);
+            border: 2px solid var(--neon-pink);
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 20px;
+            box-shadow: 0 0 10px rgba(255, 0, 255, 0.2);
+        }
+
+        .btn:hover {
+            background: var(--neon-pink);
+            color: white;
+            box-shadow: 0 0 30px var(--neon-pink);
+        }
+
+        h1 {
+            color: var(--neon-blue);
+            font-size: 60px;
+            margin: 0;
+            text-shadow: 0 0 20px var(--neon-blue);
+            letter-spacing: 5px;
+        }
+
+        p {
+            color: #ccc;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui">
+        <div id="score">分數: 0</div>
+        <div id="health-container">
+            <div id="health-bar"></div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h1 id="title">NEON STRIKE</h1>
+        <p id="message">移動滑鼠或 WASD 來控制戰機</p>
+        <button id="startBtn" class="btn">開始遊戲</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const healthBar = document.getElementById('health-bar');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const title = document.getElementById('title');
+    const message = document.getElementById('message');
+
+    // 遊戲參數設定
+    let score = 0;
+    let health = 3;
+    const maxHealth = 3;
+    let gameActive = false;
+    let mouseX;
+    let mouseY;
+    let playerSpeed = 5; // Speed for keyboard movement
+    let keyW = false;
+    let keyA = false;
+    let keyD = false;
+    let keyS = false;
+    let lastHitTime = 0; // 用於無敵時間（防止連續碰撞）
+    const invincibilityDuration = 1000; // 碰撞後無敵 1 秒
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        mouseX = canvas.width / 2;
+        mouseY = canvas.height - 100;
+    }
+
+    // Initial canvas size and event listener for resize
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // 類別定義
+    class Player {
+        constructor() {
+            this.width = 40;
+            this.height = 40;
+            this.color = '#00f3ff';
+        }
+
+        draw() {
+            const isInvincible = Date.now() - lastHitTime < invincibilityDuration;
+            if (isInvincible && Math.floor(Date.now() / 100) % 2 === 0) return; // 閃爍效果
+
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = this.color;
+            ctx.lineWidth = 2;
+            // ... (其餘繪圖程式碼保持不變)
+
+            // Body
+            const bodyGradient = ctx.createLinearGradient(mouseX - this.width / 2, mouseY - this.height / 2, mouseX + this.width / 2, mouseY + this.height / 2);
+            bodyGradient.addColorStop(0, 'rgba(0, 243, 255, 0.8)');
+            bodyGradient.addColorStop(0.5, 'rgba(0, 150, 200, 1)');
+            bodyGradient.addColorStop(1, 'rgba(0, 243, 255, 0.8)');
+            ctx.fillStyle = bodyGradient;
+            ctx.strokeStyle = this.color;
+
+            ctx.beginPath();
+            ctx.moveTo(mouseX, mouseY - this.height); // Nose
+            ctx.lineTo(mouseX + this.width * 0.3, mouseY + this.height * 0.5); // Right body
+            ctx.lineTo(mouseX + this.width * 0.6, mouseY + this.height * 0.3); // Right wing tip
+            ctx.lineTo(mouseX + this.width * 0.5, mouseY + this.height * 0.8); // Right tail fin
+            ctx.lineTo(mouseX, mouseY + this.height * 0.6); // Tail center
+            ctx.lineTo(mouseX - this.width * 0.5, mouseY + this.height * 0.8); // Left tail fin
+            ctx.lineTo(mouseX - this.width * 0.6, mouseY + this.height * 0.3); // Left wing tip
+            ctx.lineTo(mouseX - this.width * 0.3, mouseY + this.height * 0.5); // Left body
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Cockpit
+            const cockpitGradient = ctx.createRadialGradient(mouseX, mouseY - this.height * 0.4, 5, mouseX, mouseY - this.height * 0.4, 15);
+            cockpitGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+            cockpitGradient.addColorStop(1, 'rgba(0, 100, 150, 0.7)');
+            ctx.fillStyle = cockpitGradient;
+            ctx.beginPath();
+            ctx.ellipse(mouseX, mouseY - this.height * 0.4, this.width * 0.2, this.height * 0.2, 0, Math.PI, 0, false);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.restore();
+        }
+    }
+
+    class Bullet {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.radius = 4;
+            this.speed = 10;
+            this.color = '#fff';
+        }
+
+        update() {
+            this.y -= this.speed;
+        }
+
+        draw() {
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f3ff';
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    class Enemy {
+        constructor() {
+            this.width = 30 + Math.random() * 20;
+            this.height = this.width;
+            this.x = Math.random() * (canvas.width - this.width);
+            this.y = -this.height;
+            this.speed = 2 + (score / 1000); // 隨分數增加速度
+            this.color = '#ff00ff'; // Default to pink, but drawing will use both
+            this.hp = Math.ceil(this.width / 20);
+        }
+
+        update() {
+            this.y += this.speed;
+        }
+
+        draw() {
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = this.color; // Still use base color for shadow
+            ctx.lineWidth = 2;
+
+            // --- Draw Main Body (Saucer Disk) ---
+            ctx.beginPath();
+            // Define the main elliptical shape for the saucer body
+            ctx.ellipse(this.x + this.width / 2, this.y + this.height * 0.7, this.width / 2, this.height * 0.3, 0, 0, Math.PI * 2);
+            ctx.closePath();
+
+            // Create a radial gradient for the 3D effect
+            const gradientBody = ctx.createRadialGradient(
+                this.x + this.width / 2, this.y + this.height * 0.7, this.width * 0.1, // Inner circle (center, radius)
+                this.x + this.width / 2, this.y + this.height * 0.7, this.width * 0.5 // Outer circle (center, radius)
+            );
+            gradientBody.addColorStop(0, 'rgba(255, 0, 255, 0.8)'); // Lighter pink in center
+            gradientBody.addColorStop(0.5, 'rgba(0, 243, 255, 0.8)'); // Blend to blue
+            gradientBody.addColorStop(1, 'rgba(255, 0, 255, 0.8)'); // Darker pink at edges
+
+            ctx.fillStyle = gradientBody;
+            ctx.fill();
+            ctx.strokeStyle = this.color; // Outline with base color (pink)
+            ctx.stroke();
+
+            // --- Draw Cockpit/Dome ---
+            ctx.beginPath();
+            ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.3, Math.PI, Math.PI * 2);
+            ctx.lineTo(this.x + this.width / 2 + this.width * 0.3, this.y + this.height * 0.4); // Close the dome
+            ctx.closePath();
+
+            // Create a linear gradient for the dome to give it a reflective look
+            const gradientDome = ctx.createLinearGradient(
+                this.x + this.width / 2, this.y + this.height * 0.4 - this.width * 0.3,
+                this.x + this.width / 2, this.y + this.height * 0.4 + this.width * 0.3
+            );
+            gradientDome.addColorStop(0, 'rgba(0, 243, 255, 0.9)'); // Lighter blue at top
+            gradientDome.addColorStop(0.5, 'rgba(255, 0, 255, 0.7)'); // Blend to pink
+            gradientDome.addColorStop(1, 'rgba(0, 243, 255, 0.9)'); // Darker blue at bottom
+
+            ctx.fillStyle = gradientDome;
+            ctx.fill();
+            ctx.strokeStyle = '#00f3ff'; // Outline dome with blue
+            ctx.stroke();
+
+            ctx.restore();
+        }
+    }
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            this.size = Math.random() * 4 + 1;
+            this.speedX = (Math.random() - 0.5) * 8;
+            this.speedY = (Math.random() - 0.5) * 8;
+            this.alpha = 1;
+        }
+
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.alpha -= 0.02;
+        }
+
+        draw() {
+            ctx.save();
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    class Star {
+        constructor() {
+            this.x = Math.random() * canvas.width;
+            this.y = Math.random() * canvas.height;
+            this.radius = Math.random() * 1.5 + 0.5; // Small stars
+            this.speed = Math.random() * 0.5 + 0.1;
+            this.color = `rgba(255, 255, 255, ${Math.random() * 0.8 + 0.2})`; // Fading white
+        }
+
+        update() {
+            this.y += this.speed;
+            if (this.y > canvas.height) {
+                this.y = 0;
+                this.x = Math.random() * canvas.width;
+            }
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+        }
+    }
+
+    // 遊戲物件集合
+    let player = new Player();
+    let bullets = [];
+    let enemies = [];
+    let particles = [];
+    let stars = []; // New array for stars
+    let frameCount = 0;
+
+    // Initialize stars
+    for (let i = 0; i < 150; i++) { // 150 stars
+        stars.push(new Star());
+    }
+
+    function resetGame() {
+        score = 0;
+        health = maxHealth;
+        updateHealthBar();
+        scoreElement.textContent = `分數: ${score}`;
+        bullets = [];
+        enemies = [];
+        particles = [];
+        stars = []; // Clear existing stars
+        for (let i = 0; i < 150; i++) { // Re-initialize stars
+            stars.push(new Star());
+        }
+        frameCount = 0;
+        gameActive = true;
+        overlay.style.display = 'none';
+        lastHitTime = 0;
+    }
+
+    function updateHealthBar() {
+        const percentage = (health / maxHealth) * 100;
+        healthBar.style.width = `${percentage}%`;
+        
+        // 根據血量改變顏色
+        if (health === 1) {
+            healthBar.style.background = 'var(--neon-pink)';
+            healthBar.style.boxShadow = '0 0 15px var(--neon-pink)';
+        } else {
+            healthBar.style.background = 'linear-gradient(90deg, var(--neon-blue), #00aaff)';
+            healthBar.style.boxShadow = '0 0 15px var(--neon-blue)';
+        }
+    }
+
+    function takeDamage() {
+        const now = Date.now();
+        if (now - lastHitTime < invincibilityDuration) return; // 無敵時間內不扣血
+
+        health--;
+        lastHitTime = now;
+        updateHealthBar();
+
+        // 碰撞粒子效果
+        for (let k = 0; k < 15; k++) {
+            particles.push(new Particle(mouseX, mouseY, '#00f3ff'));
+        }
+
+        if (health <= 0) {
+            gameOver();
+        }
+    }
+
+    function gameOver() {
+        gameActive = false;
+        overlay.style.display = 'flex';
+        title.textContent = '遊戲結束';
+        message.textContent = `最終得分: ${score}`;
+        startBtn.textContent = '重新開始';
+    }
+
+    // 事件監聽
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'w' || e.key === 'W') keyW = true;
+        if (e.key === 'a' || e.key === 'A') keyA = true;
+        if (e.key === 'd' || e.key === 'D') keyD = true;
+        if (e.key === 's' || e.key === 'S') keyS = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.key === 'w' || e.key === 'W') keyW = false;
+        if (e.key === 'a' || e.key === 'A') keyA = false;
+        if (e.key === 'd' || e.key === 'D') keyD = false;
+        if (e.key === 's' || e.key === 'S') keyS = false;
+    });
+
+    window.addEventListener('blur', () => {
+        // Reset all key states when window loses focus
+        keyW = false;
+        keyA = false;
+        keyD = false;
+        keyS = false;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (gameActive && e.button === 0) { // Only fire on left click (button 0)
+            bullets.push(new Bullet(mouseX, mouseY - 20));
+        }
+    });
+
+    startBtn.addEventListener('click', resetGame);
+
+    // 碰撞檢測
+    function checkCollision(rect1, rect2) {
+        return rect1.x < rect2.x + rect2.width &&
+               rect1.x + rect1.width > rect2.x &&
+               rect1.y < rect2.y + rect2.height &&
+               rect1.y + rect1.height > rect2.y;
+    }
+
+    // 主迴圈
+    function gameLoop() {
+        // Update and draw stars
+        for (let i = 0; i < stars.length; i++) {
+            stars[i].update();
+            stars[i].draw();
+        }
+
+        ctx.fillStyle = 'rgba(10, 10, 18, 0.3)'; // 拖尾效果
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (gameActive) {
+            frameCount++;
+
+            // Update player position based on keyboard input
+            if (keyW) mouseY -= playerSpeed;
+            if (keyA) mouseX -= playerSpeed;
+            if (keyD) mouseX += playerSpeed;
+            if (keyS) mouseY += playerSpeed;
+
+            // Keep player within canvas bounds
+            mouseX = Math.max(0, Math.min(canvas.width, mouseX));
+            mouseY = Math.max(0, Math.min(canvas.height, mouseY));
+
+            // 生成敵人
+            let spawnRate = Math.max(10, 40 - Math.floor(score / 500));
+            if (frameCount % spawnRate === 0) {
+                enemies.push(new Enemy());
+            }
+
+            // 更新與繪製子彈
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                bullets[i].update();
+                bullets[i].draw();
+
+                if (bullets[i].y < 0) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // 更新與繪製敵人
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                enemies[i].update();
+                enemies[i].draw();
+
+                // 檢查與子彈碰撞
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    if (checkCollision(
+                        {x: bullets[j].x - 4, y: bullets[j].y - 4, width: 8, height: 8},
+                        enemies[i]
+                    )) {
+                        // 爆炸粒子
+                        for (let k = 0; k < 8; k++) {
+                            particles.push(new Particle(bullets[j].x, bullets[j].y, '#ff00ff'));
+                        }
+                        
+                        bullets.splice(j, 1);
+                        enemies.splice(i, 1);
+                        score += 50;
+                        scoreElement.textContent = `分數: ${score}`;
+                        break;
+                    }
+                }
+
+                if (!enemies[i]) continue;
+
+                // 檢查與玩家碰撞
+                if (checkCollision(
+                    {x: mouseX - 15, y: mouseY - 15, width: 30, height: 30},
+                    enemies[i]
+                )) {
+                    takeDamage();
+                    enemies.splice(i, 1); // 碰撞後敵人消失
+                    continue;
+                }
+
+                // 敵機到底部
+                if (enemies[i] && enemies[i].y > canvas.height) {
+                    enemies.splice(i, 1);
+                    // score = Math.max(0, score - 50); // 漏掉扣分 - Removed as per user request
+                    scoreElement.textContent = `分數: ${score}`;
+                }
+            }
+
+            // 更新粒子
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            player.draw();
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+
+</script>
+</body>
+</html>
